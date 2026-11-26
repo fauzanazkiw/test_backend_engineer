@@ -11,8 +11,7 @@ var (
 type ValidationErrors map[string][]string
 
 func NewValidationErrors() *ValidationErrors {
-	v := ValidationErrors{}
-	return &v
+	return &ValidationErrors{}
 }
 
 func (v ValidationErrors) Add(field, message string) {

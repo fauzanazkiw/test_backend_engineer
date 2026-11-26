@@ -38,7 +38,6 @@ func Error(w http.ResponseWriter, status int, message string) {
 	Message(w, status, message)
 }
 
-// ValidationError mengembalikan response validasi sesuai standar PRD.
 func ValidationError(w http.ResponseWriter, fieldErrors map[string][]string) {
 	JSON(w, http.StatusBadRequest, map[string]any{
 		"message": "validation failed",
