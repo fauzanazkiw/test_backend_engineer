@@ -1,0 +1,19 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build output
+bin/
+dist/
+*.exe
+*.test
+*.out
+
+# Editor
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+.docker-compose.yml

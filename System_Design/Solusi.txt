@@ -1,0 +1,66 @@
+Solusi Pemilihan Kursi, Restok Tiket, dan Refund/Pembatalan
+
+
+1. SISTEM PEMILIHAN TEMPAT DUDUK (Performa dan Concurency)
+
+Contoh Kasus
+Ribuan orang bisa memilih kursi yang sama pada waktu bersamaan (misalnya
+saat premiere film populer). Sistem harus menjamin satu kursi hanya
+dimiliki satu orang (tidak ada double booking) dan tetap cepat.
+
+Solusi: Status kursi + Seat Lock sementara (TTL)
+  Setiap kursi memiliki 3 status:
+    - AVAILABLE : Kursi kosong, bisa dipilih.
+    - LOCKED    : Dipegang sementara oleh satu customer (misalnya 10 menit)
+                  selama proses pembayaran.
+    - SOLD      : Sudah dibayar, bersifat final.
+
+Strategi performa dan skalabilitas
+  - Redis cache + lock
+      Baca/tulis status kursi sangat cepat (in-memory).
+  - Load balancer + horizontal scaling
+      Banyak server aplikasi melayani trafik besar.
+  - Sharding / partisi data per cabang/kota
+      Beban database terbagi, query lebih ringan.
+  - Message queue (Kafka/RabbitMQ)
+      Proses berat (email, notifikasi, e-ticket) berjalan asinkron.
+  - Waiting room / antrean virtual
+      Saat lonjakan trafik ekstrem, pengguna diantrikan agar sistem tidak
+      down.
+  - Rate limiting dan anti-bot
+      Mencegah calo/bot memborong kursi.
+  - CDN
+      Aset statis (poster, gambar) tidak membebani server.
+
+
+2. SISTEM PENCATATAN DAN RESTOK TIKET
+A. Pencatatan
+Setiap perubahan status kursi dicatat dalam tabel transaksi dan log
+riwayat (audit trail):
+  - orders          : id order, user, total, status (PENDING, PAID,
+                      CANCELLED, REFUNDED)
+  - order_items /
+    tickets         : id tiket, showtime, kursi, kode QR, status
+  - seat_status_log : riwayat perubahan (siapa, kapan, dari status apa ke
+                      status apa)
+  - payments        : referensi pembayaran dari payment gateway
+
+B. Restok tiket (kursi kembali tersedia)
+Kursi dikembalikan menjadi AVAILABLE pada kondisi berikut:
+  - Customer tidak membayar dalam 10 menit
+      -> Lock expired otomatis (TTL Redis).
+  - Customer menekan tombol batal
+      -> Lock dihapus manual oleh sistem.
+  - Pembayaran gagal dari payment gateway
+      -> Event "payment failed" memicu pelepasan kursi.
+  - Pembatalan oleh pihak bioskop
+      -> Dijelaskan pada bagian refund di bawah.
+
+
+3. ALUR REFUND / PEMBATALAN
+
+Pembatalan dari pihak bioskop dapat terjadi karena film dibatalkan, studio rusak, jadwal diubah, atau gangguan teknis lainnya. Prosesnya dimulai ketika admin bioskop membatalkan jadwal tayang melalui dashboard dengan mencantumkan alasan. Sistem lalu mengubah status jadwal menjadi CANCELLED, menutup penjualan, dan menandai semua tiket yang sudah terjual (SOLD) sebagai CANCELLED_BY_CINEMA.
+
+Selanjutnya, sistem mengirim event ke message queue agar worker memproses refund per order secara asinkron sehingga sistem tidak terbebani meski ada ribuan tiket. Worker memanggil API refund payment gateway (e-wallet, kartu kredit, virtual account, dan lainnya) untuk mengembalikan dana 100% termasuk biaya layanan. Setelah gateway mengonfirmasi, status order berubah menjadi REFUNDED. Jika refund gagal, sistem mencoba ulang (retry), dan bila tetap gagal, kasus diteruskan ke tim keuangan untuk ditangani manual.
+
+Customer menerima notifikasi melalui email, push, atau SMS yang berisi alasan pembatalan, nominal refund, estimasi waktu dana kembali, serta opsi jadwal pengganti atau voucher bila tersedia. QR code tiket dinonaktifkan agar tidak bisa dipakai masuk, dan seluruh proses dicatat dalam log audit untuk keperluan pelaporan dan penyelesaian komplain.
